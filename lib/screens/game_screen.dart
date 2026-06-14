@@ -460,117 +460,178 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       child: IgnorePointer(
         ignoring: _isGameActive,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 15.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              GestureDetector(
-                onTap: _editName,
-                child: Transform(
-                  transform: Matrix4.skewX(-0.15),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
-                      border: const Border(
-                        left: BorderSide(color: Color(0xFFE10600), width: 5),
-                      ),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.5), offset: const Offset(3, 3), blurRadius: 5)
-                      ],
-                    ),
-                    child: Transform(
-                      transform: Matrix4.skewX(0.15),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.sports_motorsports, color: Colors.white70, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            _playerName.toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontStyle: FontStyle.italic,
-                              letterSpacing: 1.2,
-                              fontSize: 16,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          child: SizedBox(
+            height: 44,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Left: Driver Profile & Streak
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: _editName,
+                        child: Transform(
+                          transform: Matrix4.skewX(-0.15),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1E1E1E),
+                              border: const Border(
+                                left: BorderSide(color: Color(0xFFE10600), width: 4),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.5),
+                                  offset: const Offset(2, 2),
+                                  blurRadius: 4,
+                                )
+                              ],
+                            ),
+                            child: Transform(
+                              transform: Matrix4.skewX(0.15),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.sports_motorsports, color: Colors.white70, size: 16),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _playerName.toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontStyle: FontStyle.italic,
+                                      letterSpacing: 1.0,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.edit, color: Colors.white38, size: 12),
+                                ],
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.edit, color: Colors.white38, size: 14),
+                        ),
+                      ),
+                      if (_currentStreak >= 2) ...[
+                        const SizedBox(width: 6),
+                        AnimatedBuilder(
+                          animation: _idleAnimation,
+                          builder: (context, _) {
+                            final streakColor = _getStreakColor(_currentStreak);
+                            return Transform(
+                              transform: Matrix4.skewX(-0.15),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF1E1E1E),
+                                  border: Border.all(
+                                    color: streakColor.withValues(alpha: _idleAnimation.value + 0.45),
+                                    width: 2.0,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: streakColor.withValues(alpha: _idleAnimation.value * 0.6),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    ),
+                                  ],
+                                ),
+                                child: Transform(
+                                  transform: Matrix4.skewX(0.15),
+                                  child: Text(
+                                    '🔥 x$_currentStreak',
+                                    style: TextStyle(
+                                      color: streakColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // Center: Game Branding
+                Align(
+                  alignment: Alignment.center,
+                  child: Transform(
+                    transform: Matrix4.skewX(-0.15),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        border: Border.all(
+                          color: const Color(0xFFE10600).withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFE10600).withValues(alpha: 0.15),
+                            blurRadius: 6,
+                            spreadRadius: 1,
+                          )
                         ],
+                      ),
+                      child: const Text(
+                        'LIGHTS OUT',
+                        style: TextStyle(
+                          color: Color(0xFFE10600), // F1 Red
+                          fontWeight: FontWeight.w900,
+                          fontStyle: FontStyle.italic,
+                          letterSpacing: 2.5,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              // Live streak counter — visible when player is on a streak of 2+
-              if (_currentStreak >= 2)
-                AnimatedBuilder(
-                  animation: _idleAnimation,
-                  builder: (context, _) {
-                    final streakColor = _getStreakColor(_currentStreak);
-                    return Transform(
-                      transform: Matrix4.skewX(-0.15),
+
+                // Right: Leaderboard Button
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Transform(
+                    transform: Matrix4.skewX(-0.15),
+                    child: GestureDetector(
+                      onTap: () {
+                        _resetGameTimers();
+                        setState(() {
+                          _isLeaderboardOpen = true;
+                        });
+                      },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E1E1E),
-                          border: Border.all(
-                            color: streakColor.withValues(alpha: _idleAnimation.value + 0.45),
-                            width: 2.5,
+                          border: const Border(
+                            right: BorderSide(color: Colors.white, width: 3),
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: streakColor.withValues(alpha: _idleAnimation.value * 0.6),
-                              blurRadius: 12,
-                              spreadRadius: 1,
-                            ),
+                              color: Colors.black.withValues(alpha: 0.5),
+                              offset: const Offset(-2, 2),
+                              blurRadius: 4,
+                            )
                           ],
                         ),
                         child: Transform(
                           transform: Matrix4.skewX(0.15),
-                          child: Text(
-                            '🔥 x$_currentStreak',
-                            style: TextStyle(
-                              color: streakColor,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
+                          child: const Icon(Icons.leaderboard, color: Colors.white, size: 20),
                         ),
                       ),
-                    );
-                  },
-                ),
-              Transform(
-                transform: Matrix4.skewX(-0.15),
-                child: GestureDetector(
-                  onTap: () {
-                    _resetGameTimers();
-                    setState(() {
-                      _isLeaderboardOpen = true;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E1E1E),
-                      border: const Border(
-                        right: BorderSide(color: Colors.white, width: 4),
-                      ),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.5), offset: const Offset(-3, 3), blurRadius: 5)
-                      ],
-                    ),
-                    child: Transform(
-                      transform: Matrix4.skewX(0.15),
-                      child: const Icon(Icons.leaderboard, color: Colors.white, size: 26),
                     ),
                   ),
                 ),
-              )
-            ],
+              ],
+            ),
           ),
         ),
       ),
