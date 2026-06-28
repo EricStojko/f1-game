@@ -10,6 +10,7 @@ import '../painters/grid_painter.dart';
 import '../painters/graph_painter.dart';
 import '../painters/carbon_fiber_painter.dart';
 import '../painters/checkered_flag_painter.dart';
+import '../painters/track_painter.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -379,6 +380,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           Positioned.fill(
             child: CustomPaint(painter: CarbonFiberPainter()),
           ),
+          // Racing track perspective — adds depth and atmosphere
+          Positioned.fill(
+            child: CustomPaint(painter: TrackHorizonPainter()),
+          ),
           Positioned.fill(
             child: CustomPaint(painter: GridPainter()),
           ),
@@ -412,6 +417,24 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
+          // Cockpit vignette — darkens screen edges for an immersive in-car feel
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.center,
+                    radius: 1.15,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.80),
+                    ],
+                    stops: const [0.36, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
           // Cinematic red afterglow: fades from 38% opacity red to transparent
           // over 300ms — simulates phosphor decay of the F1 red lights
           AnimatedBuilder(
@@ -439,16 +462,23 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   Widget _buildMainContent() {
     return SafeArea(
-      child: Column(
-        children: [
-          _buildHeader(),
-          const Spacer(),
-          _buildGantry(),
-          const SizedBox(height: 50),
-          _buildCenterMessage(),
-          const Spacer(),
-          _buildHistoryGraph(),
-        ],
+      child: Center(
+        child: ConstrainedBox(
+          // Constrain width so gantry stays centred on wide desktop / web screens.
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _buildHeader(),
+              const Spacer(),
+              _buildGantry(),
+              const SizedBox(height: 50),
+              _buildCenterMessage(),
+              const Spacer(),
+              _buildHistoryGraph(),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -643,8 +673,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          height: 16,
-          width: min(310.0, MediaQuery.sizeOf(context).width * 0.9),
+          height: 22,
+          width: min(430.0, MediaQuery.sizeOf(context).width * 0.92),
           decoration: BoxDecoration(
             color: const Color(0xFF222222),
             borderRadius: BorderRadius.circular(2),
@@ -675,8 +705,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   Widget _buildLightBox(bool isOn) {
     return Container(
-      width: min(48.0, MediaQuery.sizeOf(context).width * 0.14),
-      height: 130,
+      width: min(64.0, MediaQuery.sizeOf(context).width * 0.14),
+      height: 195,
       decoration: BoxDecoration(
         color: const Color(0xFF151515),
         borderRadius: const BorderRadius.only(
@@ -703,7 +733,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildCircle(bool isOn) {
-    final size = min(34.0, MediaQuery.sizeOf(context).width * 0.1);
+    final size = min(50.0, MediaQuery.sizeOf(context).width * 0.12);
     // Idle state: breathe the glow to hint that the gantry is interactive
     final bool isIdle = _gameState == GameState.idle;
 
@@ -844,6 +874,34 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           scale: _pulseAnimation.value,
           child: child,
         ),
+        child: column,
+      );
+    }
+
+    // Idle state: wrap the CTA in a pulsing red glow ring to signal interactivity
+    if (_gameState == GameState.idle) {
+      return AnimatedBuilder(
+        animation: _idleAnimation,
+        builder: (context, child) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: const Color(0xFFE10600).withValues(alpha: _idleAnimation.value * 0.85),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFE10600).withValues(alpha: _idleAnimation.value * 0.22),
+                  blurRadius: 35,
+                  spreadRadius: 10,
+                ),
+              ],
+            ),
+            child: child,
+          );
+        },
         child: column,
       );
     }
