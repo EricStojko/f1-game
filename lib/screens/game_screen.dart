@@ -11,6 +11,7 @@ import '../painters/graph_painter.dart';
 import '../painters/carbon_fiber_painter.dart';
 import '../painters/checkered_flag_painter.dart';
 import '../painters/track_painter.dart';
+import 'package:confetti/confetti.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -71,6 +72,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   // Personal best tracking
   int? _personalBestTime;
   bool _isNewPersonalBest = false;
+
+  late ConfettiController _confettiController;
+  final AudioPlayer _ambientPlayer = AudioPlayer();
 
   // Streak / combo tracking
   int _currentStreak = 0;
@@ -145,6 +149,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       begin: const Offset(0, 0.6),
       end: Offset.zero,
     ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(_resultSlideController);
+
+    _confettiController = ConfettiController(duration: const Duration(seconds: 1));
+    _ambientPlayer.setReleaseMode(ReleaseMode.loop);
+    _updateAmbientSound();
+  }
+
+  void _updateAmbientSound() {
+    if (_gameState == GameState.idle) {
+      _ambientPlayer.play(AssetSource('sounds/idle_engine.mp3'), volume: 0.15);
+    } else {
+      _ambientPlayer.stop();
+    }
   }
 
   @override
@@ -158,6 +174,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _idleController.dispose();
     _lightsOutController.dispose();
     _resultSlideController.dispose();
+    _confettiController.dispose();
+    _ambientPlayer.dispose();
     _clickPlayer.dispose();
     _sfxPlayer.dispose();
     super.dispose();
@@ -286,12 +304,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _checkeredController.reset();
     _idleController.stop();
     setState(() {
+      _isLeaderboardOpen = false;
       _gameState = GameState.preStart;
       _lightsLit = 0;
       _reactionTime = null;
       _isNewPersonalBest = false;
+      _isCooldown = false;
       // Don't reset streak here — only reset on jump start or explicit reset
     });
+
+    _updateAmbientSound();
 
     // Play an engine-rev click to confirm the tap registered
     _clickPlayer.play(AssetSource('sounds/light_on.mp3'));
@@ -381,7 +403,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _sfxPlayer.play(AssetSource('sounds/result.mp3'));
       final elapsed = _stopwatch.elapsedMilliseconds;
       final bool newBest = _personalBestTime == null || elapsed < _personalBestTime!;
-      if (newBest) _personalBestTime = elapsed;
+      if (newBest) {
+        _personalBestTime = elapsed;
+        _confettiController.play();
+      }
       setState(() {
         _reactionTime = elapsed;
         _gameState = GameState.finished;
@@ -519,16 +544,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               color: Colors.transparent,
               width: double.infinity,
               height: double.infinity,
-              child: AnimatedBuilder(
-                animation: _shakeAnimation,
-                builder: (context, child) {
-                  return Transform.translate(
-                    offset: Offset(sin(_shakeAnimation.value * pi * 4) * 12, 0),
-                    child: child,
-                  );
-                },
-                child: RepaintBoundary(child: _buildMainContent()),
-              ),
+              child: RepaintBoundary(child: _buildMainContent()),
+            ),
+          ),
+          // Confetti explosion for personal bests
+          Align(
+            alignment: Alignment.topCenter,
+            child: ConfettiWidget(
+              confettiController: _confettiController,
+              blastDirection: pi / 2, // down
+              maxBlastForce: 25, // set a lower max blast force
+              minBlastForce: 10,
+              emissionFrequency: 0.05,
+              numberOfParticles: 30, // number of particles to emit
+              gravity: 0.15,
+              colors: const [Colors.red, Colors.white, Colors.yellow, Colors.green],
             ),
           ),
           // Cockpit vignette — darkens screen edges for an immersive in-car feel
@@ -806,37 +836,46 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildGantry() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          height: 22,
-          width: min(430.0, MediaQuery.sizeOf(context).width * 0.92),
-          decoration: BoxDecoration(
-            color: const Color(0xFF222222),
-            borderRadius: BorderRadius.circular(2),
-            border: Border.all(color: const Color(0xFF444444), width: 1.5),
-            boxShadow: const [
-              BoxShadow(color: Colors.black87, blurRadius: 10, offset: Offset(0, 6)),
-            ],
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Color(0xFF333333), Color(0xFF111111)],
+    return AnimatedBuilder(
+      animation: _shakeAnimation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(sin(_shakeAnimation.value * pi * 4) * 12, 0),
+          child: child,
+        );
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            height: 22,
+            width: min(430.0, MediaQuery.sizeOf(context).width * 0.92),
+            decoration: BoxDecoration(
+              color: const Color(0xFF222222),
+              borderRadius: BorderRadius.circular(2),
+              border: Border.all(color: const Color(0xFF444444), width: 1.5),
+              boxShadow: const [
+                BoxShadow(color: Colors.black87, blurRadius: 10, offset: Offset(0, 6)),
+              ],
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF333333), Color(0xFF111111)],
+              ),
             ),
           ),
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(5, (index) {
-            bool isOn = index < _lightsLit;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 5.0),
-              child: _buildLightBox(isOn),
-            );
-          }),
-        ),
-      ],
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (index) {
+              bool isOn = index < _lightsLit;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5.0),
+                child: _buildLightBox(isOn),
+              );
+            }),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1257,6 +1296,25 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   letterSpacing: 2.0,
                 ),
               ),
+              if (_sessionHistory.isNotEmpty) ...[
+                const SizedBox(width: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    "RUN ${_sessionHistory.length}",
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.0,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 15),
@@ -1405,6 +1463,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                   _isLeaderboardOpen = false;
                                   _gameState = GameState.idle;
                                 });
+                                _updateAmbientSound();
                               },
                               child: const Icon(Icons.close, color: Colors.white, size: 28),
                             ),
@@ -1425,33 +1484,49 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         itemCount: _leaderboard.length,
                         itemBuilder: (context, index) {
                           final score = _leaderboard[index];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF1A1A1A),
-                              border: Border(left: BorderSide(color: _getTierColor(score.timeMs), width: 4)),
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                              leading: Text(
-                                "P${index + 1}",
-                                style: const TextStyle(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic),
+                          return TweenAnimationBuilder<Offset>(
+                            tween: Tween<Offset>(begin: const Offset(0, 0.5), end: Offset.zero),
+                            duration: Duration(milliseconds: 300 + (index * 80)),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, offset, child) {
+                              return FractionalTranslation(
+                                translation: offset,
+                                child: AnimatedOpacity(
+                                  opacity: 1.0,
+                                  duration: Duration(milliseconds: 300 + (index * 80)),
+                                  curve: Curves.easeOut,
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1A1A1A),
+                                border: Border(left: BorderSide(color: _getTierColor(score.timeMs), width: 4)),
                               ),
-                              title: Text(
-                                score.name.toUpperCase(),
-                                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2),
-                              ),
-                              subtitle: Text(
-                                _getTier(score.timeMs),
-                                style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.bold),
-                              ),
-                              trailing: Text(
-                                "${score.timeMs} ms",
-                                style: TextStyle(
-                                  color: _getTierColor(score.timeMs),
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w900,
-                                  fontStyle: FontStyle.italic,
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                leading: Text(
+                                  "P${index + 1}",
+                                  style: const TextStyle(color: Colors.white54, fontSize: 24, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic),
+                                ),
+                                title: Text(
+                                  score.name.toUpperCase(),
+                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 1.2),
+                                ),
+                                subtitle: Text(
+                                  _getTier(score.timeMs),
+                                  style: const TextStyle(color: Colors.white54, fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                                trailing: Text(
+                                  "${score.timeMs} ms",
+                                  style: TextStyle(
+                                    color: _getTierColor(score.timeMs),
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    fontStyle: FontStyle.italic,
+                                  ),
                                 ),
                               ),
                             ),
