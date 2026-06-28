@@ -64,6 +64,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late AnimationController _lightsOutController;
   late Animation<double> _lightsOutGlowAnimation;
 
+  // Result card slide-in from bottom
+  late AnimationController _resultSlideController;
+  late Animation<Offset> _resultSlideAnimation;
+
   // Personal best tracking
   int? _personalBestTime;
   bool _isNewPersonalBest = false;
@@ -131,6 +135,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _lightsOutGlowAnimation = Tween<double>(begin: 0.38, end: 0.0)
         .chain(CurveTween(curve: Curves.easeOut))
         .animate(_lightsOutController);
+
+    // Result card: slides up from just below the visible area
+    _resultSlideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _resultSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.6),
+      end: Offset.zero,
+    ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(_resultSlideController);
   }
 
   @override
@@ -143,6 +157,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _checkeredController.dispose();
     _idleController.dispose();
     _lightsOutController.dispose();
+    _resultSlideController.dispose();
     _clickPlayer.dispose();
     _sfxPlayer.dispose();
     super.dispose();
@@ -278,6 +293,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       // Don't reset streak here — only reset on jump start or explicit reset
     });
 
+    // Play an engine-rev click to confirm the tap registered
+    _clickPlayer.play(AssetSource('sounds/light_on.mp3'));
+
     // Announce the race sequence for 900ms, then begin lighting sequence
     _preStartTimer = Timer(const Duration(milliseconds: 900), () {
       if (!mounted || _gameState != GameState.preStart) return;
@@ -377,6 +395,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         }
       });
       _idleController.repeat(reverse: true);
+      // Trigger result card slide-in
+      _resultSlideController.forward(from: 0.0);
       if (elapsed < _eliteThresholdMs) {
         _checkeredController.forward(from: 0.0);
       }
@@ -631,8 +651,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                       fontSize: 13,
                                     ),
                                   ),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.edit, color: Colors.white38, size: 12),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'TAP TO RENAME',
+                                    style: TextStyle(
+                                      color: Color(0xFFE10600),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -732,7 +760,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         });
                       },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
                           color: const Color(0xFF1E1E1E),
                           border: const Border(
@@ -748,7 +776,22 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                         ),
                         child: Transform(
                           transform: Matrix4.skewX(0.15),
-                          child: const Icon(Icons.leaderboard, color: Colors.white, size: 20),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.leaderboard, color: Colors.white, size: 16),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'STANDINGS',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -888,7 +931,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
 
   Widget _buildCenterMessage() {
     if (_gameState == GameState.finished) {
-      return _buildPitBoardResult(_reactionTime ?? 0);
+      // Slide the result card up from below on entry
+      return SlideTransition(
+        position: _resultSlideAnimation,
+        child: _buildPitBoardResult(_reactionTime ?? 0),
+      );
     }
 
     String mainText = "";
@@ -899,7 +946,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       case GameState.idle:
         mainText = "TAP TO START";
         subText = "React as fast as possible when lights go out!";
-        textColor = Colors.white70;
+        textColor = Colors.white;
         break;
       case GameState.preStart:
         mainText = "RACE SEQUENCE INITIATED";
@@ -960,7 +1007,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w500,
-              color: Colors.white54,
+              color: Colors.white70,
             ),
           ),
         ]
@@ -1164,7 +1211,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               const Text(
                 "TAP ANYWHERE TO RETRY",
                 style: TextStyle(
-                  color: Colors.white30,
+                  color: Colors.white60,
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 1.0,
@@ -1311,14 +1358,57 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       ),
                       Transform(
                         transform: Matrix4.skewX(0.15),
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _isLeaderboardOpen = false;
-                              _gameState = GameState.idle;
-                            });
-                          },
-                          child: const Icon(Icons.close, color: Colors.white, size: 28),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            GestureDetector(
+                              onTap: () async {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    backgroundColor: const Color(0xFF1E1E1E),
+                                    shape: const RoundedRectangleBorder(
+                                      side: BorderSide(color: Color(0xFFE10600), width: 2),
+                                    ),
+                                    title: const Text(
+                                      'RESET STANDINGS?',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+                                    ),
+                                    content: const Text(
+                                      'This will erase all recorded times. This cannot be undone.',
+                                      style: TextStyle(color: Colors.white60),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('RESET', style: TextStyle(color: Color(0xFFE10600), fontWeight: FontWeight.w900)),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (confirm == true) {
+                                  final prefs = await SharedPreferences.getInstance();
+                                  await prefs.remove(_prefsKey);
+                                  setState(() => _leaderboard.clear());
+                                }
+                              },
+                              child: const Icon(Icons.delete_outline, color: Colors.white38, size: 22),
+                            ),
+                            const SizedBox(width: 16),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _isLeaderboardOpen = false;
+                                  _gameState = GameState.idle;
+                                });
+                              },
+                              child: const Icon(Icons.close, color: Colors.white, size: 28),
+                            ),
+                          ],
                         ),
                       )
                     ],
