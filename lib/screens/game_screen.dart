@@ -34,6 +34,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   Timer? _sequenceTimer;
   Timer? _randomDelayTimer;
   Timer? _cooldownTimer;
+  Timer? _preStartTimer;
   final Stopwatch _stopwatch = Stopwatch();
   int? _reactionTime;
   String _playerName = "Driver 1";
@@ -72,6 +73,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   int _bestStreak = 0;
 
   bool get _isGameActive =>
+      _gameState == GameState.preStart ||
       _gameState == GameState.starting ||
       _gameState == GameState.waitingForLightsOut ||
       _gameState == GameState.lightsOut;
@@ -80,6 +82,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _loadLeaderboard();
+    _checkOnboarding();
 
     _shakeController = AnimationController(
       vsync: this,
@@ -134,6 +137,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void dispose() {
     _resetGameTimers();
     _cooldownTimer?.cancel();
+    _preStartTimer?.cancel();
     _shakeController.dispose();
     _pulseController.dispose();
     _checkeredController.dispose();
@@ -147,6 +151,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   void _resetGameTimers() {
     _sequenceTimer?.cancel();
     _randomDelayTimer?.cancel();
+    _preStartTimer?.cancel();
     _stopwatch.reset();
   }
 
@@ -160,6 +165,89 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         _leaderboard.sort((a, b) => a.timeMs.compareTo(b.timeMs));
       });
     }
+  }
+
+  /// Shows the onboarding modal on first launch, persisted via SharedPreferences.
+  Future<void> _checkOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool seen = prefs.getBool('lights_out_onboarding_v1') ?? false;
+    if (!seen && mounted) {
+      // Small delay so the screen is fully rendered before the modal appears
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (mounted) _showOnboardingModal();
+    }
+  }
+
+  void _showOnboardingModal() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF151515),
+          shape: RoundedRectangleBorder(
+            side: const BorderSide(color: Color(0xFFE10600), width: 3),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          title: Transform(
+            transform: Matrix4.skewX(-0.1),
+            child: const Text(
+              'HOW TO RACE',
+              style: TextStyle(
+                color: Color(0xFFE10600),
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                letterSpacing: 2.0,
+                fontSize: 20,
+              ),
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              _OnboardingStep(
+                number: '01',
+                text: 'Tap anywhere to start the race sequence.',
+              ),
+              SizedBox(height: 14),
+              _OnboardingStep(
+                number: '02',
+                text: 'Watch the 5 red lights illuminate one by one.',
+              ),
+              SizedBox(height: 14),
+              _OnboardingStep(
+                number: '03',
+                text: 'When ALL lights go out — tap as FAST as you can!',
+                highlight: true,
+              ),
+              SizedBox(height: 14),
+              _OnboardingStep(
+                number: '⚠️',
+                text: 'Tap BEFORE the lights go out = FALSE START.',
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('lights_out_onboarding_v1', true);
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text(
+                'LIGHTS OUT — LET\'S GO!',
+                style: TextStyle(
+                  color: Color(0xFFE10600),
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _saveScore(int timeMs) async {
@@ -176,32 +264,35 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   }
 
   void _startGame() {
-    if (_gameState == GameState.starting || _gameState == GameState.waitingForLightsOut) return;
+    if (_gameState == GameState.preStart ||
+        _gameState == GameState.starting ||
+        _gameState == GameState.waitingForLightsOut) { return; }
 
     _checkeredController.reset();
     _idleController.stop();
     setState(() {
-      _gameState = GameState.starting;
+      _gameState = GameState.preStart;
       _lightsLit = 0;
       _reactionTime = null;
       _isNewPersonalBest = false;
       // Don't reset streak here — only reset on jump start or explicit reset
     });
 
-    _sequenceTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() {
-        _lightsLit++;
-      });
-      HapticFeedback.lightImpact();
-      _clickPlayer.play(AssetSource('sounds/light_on.mp3'));
+    // Announce the race sequence for 900ms, then begin lighting sequence
+    _preStartTimer = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted || _gameState != GameState.preStart) return;
+      setState(() => _gameState = GameState.starting);
+      _sequenceTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        setState(() => _lightsLit++);
+        HapticFeedback.lightImpact();
+        _clickPlayer.play(AssetSource('sounds/light_on.mp3'));
 
-      if (_lightsLit == 5) {
-        timer.cancel();
-        setState(() {
-          _gameState = GameState.waitingForLightsOut;
-        });
-        _startRandomDelay();
-      }
+        if (_lightsLit == 5) {
+          timer.cancel();
+          setState(() => _gameState = GameState.waitingForLightsOut);
+          _startRandomDelay();
+        }
+      });
     });
   }
 
@@ -239,6 +330,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       _startGame();
       return;
     }
+
+    // Absorb tap silently during preStart announcement — cannot jump-start yet
+    if (_gameState == GameState.preStart) return;
 
     if (_gameState == GameState.starting || _gameState == GameState.waitingForLightsOut) {
       _resetGameTimers();
@@ -807,6 +901,11 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         subText = "React as fast as possible when lights go out!";
         textColor = Colors.white70;
         break;
+      case GameState.preStart:
+        mainText = "RACE SEQUENCE INITIATED";
+        subText = "Brace yourself.";
+        textColor = const Color(0xFFE10600);
+        break;
       case GameState.starting:
         mainText = "PREPARE...";
         textColor = Colors.redAccent;
@@ -816,7 +915,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         textColor = Colors.red;
         break;
       case GameState.lightsOut:
-        mainText = "";
+        mainText = "GO!";
         textColor = const Color(0xFF00FF00);
         break;
       case GameState.jumpStart:
@@ -837,7 +936,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           style: TextStyle(
             fontSize: _gameState == GameState.finished ||
                     _gameState == GameState.lightsOut ||
-                    _gameState == GameState.jumpStart
+                    _gameState == GameState.jumpStart ||
+                    _gameState == GameState.preStart
                 ? 48
                 : 32,
             fontWeight: FontWeight.w900,
@@ -1117,16 +1217,58 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
             height: 80,
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 40),
-            child: _sessionHistory.length > 1
-                ? CustomPaint(
-                    painter: GraphPainter(_sessionHistory),
-                  )
-                : const Center(
-                    child: Text(
-                      "AWAITING TELEMETRY DATA...",
-                      style: TextStyle(color: Colors.white24, fontSize: 14, fontStyle: FontStyle.italic, fontWeight: FontWeight.bold),
+            child: _sessionHistory.isEmpty
+              ? const Center(
+                  child: Text(
+                    "COMPLETE YOUR FIRST RUN",
+                    style: TextStyle(
+                      color: Colors.white24,
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
                     ),
                   ),
+                )
+              : _sessionHistory.length == 1
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            "FIRST RUN RECORDED",
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            "${_sessionHistory[0]} ms",
+                            style: const TextStyle(
+                              color: Color(0xFF00FF00),
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            "Race again to build telemetry",
+                            style: TextStyle(
+                              color: Colors.white24,
+                              fontSize: 11,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : CustomPaint(
+                      painter: GraphPainter(_sessionHistory),
+                    ),
           ),
         ],
       ),
@@ -1231,6 +1373,57 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A single numbered step in the onboarding modal.
+class _OnboardingStep extends StatelessWidget {
+  final String number;
+  final String text;
+  final bool highlight;
+
+  const _OnboardingStep({
+    required this.number,
+    required this.text,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: highlight ? const Color(0xFFE10600) : const Color(0xFF222222),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          child: Text(
+            number,
+            style: TextStyle(
+              color: highlight ? Colors.white : const Color(0xFFE10600),
+              fontWeight: FontWeight.w900,
+              fontSize: 11,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: highlight ? Colors.white : Colors.white70,
+              fontSize: 14,
+              fontWeight: highlight ? FontWeight.bold : FontWeight.normal,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

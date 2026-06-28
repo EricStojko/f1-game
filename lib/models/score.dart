@@ -1,4 +1,4 @@
-enum GameState { idle, starting, waitingForLightsOut, lightsOut, jumpStart, finished }
+enum GameState { idle, preStart, starting, waitingForLightsOut, lightsOut, jumpStart, finished }
 
 class Score {
   final String name;
